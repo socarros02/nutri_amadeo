@@ -6,6 +6,8 @@ import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
 
 const BUCKET = "comidas";
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MEAL_TYPES = ["Desayuno", "Almuerzo", "Merienda", "Cena", "Extra"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -60,8 +62,9 @@ export async function POST(request: Request) {
 
     if (body.action === "meal") {
       const { date, type, image } = body;
+      const note = type === "Extra" && typeof body.note === "string" ? body.note.trim().slice(0, 60) : "";
       if (!isValidDate(date)) return json({ error: "Fecha inválida" }, 400);
-      if (type !== "Almuerzo" && type !== "Cena") return json({ error: "Tipo inválido" }, 400);
+      if (typeof type !== "string" || !MEAL_TYPES.includes(type)) return json({ error: "Tipo inválido" }, 400);
       if (typeof image !== "string") return json({ error: "Falta la foto" }, 400);
 
       const match = image.match(/^data:image\/(jpeg|png|webp);base64,(.+)$/);
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
 
       const insert = await supabase
         .from("meals")
-        .insert({ date, type, photo_path: path })
+        .insert({ date, type, note: note || null, photo_path: path })
         .select()
         .single();
       if (insert.error) {
@@ -104,6 +107,26 @@ export async function POST(request: Request) {
         .single();
       if (insert.error) throw insert.error;
       return json({ ok: true, activity: insert.data });
+    }
+
+    if (body.action === "delete-meal") {
+      if (typeof body.id !== "string" || !UUID_RE.test(body.id)) return json({ error: "Registro inválido" }, 400);
+      const supabase = adminClient();
+      const removed = await supabase.from("meals").delete().eq("id", body.id).select("photo_path").maybeSingle();
+      if (removed.error) throw removed.error;
+      if (!removed.data) return json({ error: "Esa foto ya no existe" }, 404);
+      const storage = await supabase.storage.from(BUCKET).remove([removed.data.photo_path]);
+      if (storage.error) console.error("No se pudo borrar el archivo", storage.error);
+      return json({ ok: true });
+    }
+
+    if (body.action === "delete-activity") {
+      if (typeof body.id !== "string" || !UUID_RE.test(body.id)) return json({ error: "Registro inválido" }, 400);
+      const supabase = adminClient();
+      const removed = await supabase.from("activities").delete().eq("id", body.id).select("id").maybeSingle();
+      if (removed.error) throw removed.error;
+      if (!removed.data) return json({ error: "Esa actividad ya no existe" }, 404);
+      return json({ ok: true });
     }
 
     return json({ error: "Acción desconocida" }, 400);

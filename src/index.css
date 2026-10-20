@@ -61,7 +61,7 @@ button:focus-visible, input:focus-visible, label:has(input:focus-visible) { outl
 .section-heading h2 { margin: 4px 0 0; color: var(--navy); font-size: 23px; letter-spacing: -.03em; }
 .count-badge { display: grid; place-items: center; width: 31px; height: 31px; border-radius: 50%; background: var(--mauve); color: var(--peach); font-size: 12px; font-weight: 800; }
 .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.food-photo { position: relative; padding: 0; border-radius: 18px; overflow: hidden; aspect-ratio: 1; background: var(--violet); box-shadow: 0 7px 18px rgba(53,92,125,.14); }
+.food-photo { position: relative; padding: 0; transition: opacity .2s; border-radius: 18px; overflow: hidden; aspect-ratio: 1; background: var(--violet); box-shadow: 0 7px 18px rgba(53,92,125,.14); }
 .food-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s; }
 .food-photo:hover img { transform: scale(1.04); }
 .food-photo span { position: absolute; bottom: 9px; left: 9px; padding: 6px 10px; border-radius: 10px; background: var(--mauve); color: var(--peach); font-size: 10px; font-weight: 800; box-shadow: 0 3px 10px rgba(53,92,125,.2); }
@@ -156,3 +156,14 @@ button:focus-visible, input:focus-visible, label:has(input:focus-visible) { outl
 .data-form .error-message { margin: 0 0 12px; }
 .config-banner { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 50; width: 100%; max-width: 460px; background: var(--navy); color: #fff; font-size: 12px; padding: 10px 16px; text-align: center; }
 .config-banner button { background: transparent; color: var(--peach); font-weight: 700; text-decoration: underline; margin-left: 6px; }
+
+.toggle.five { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.toggle.five button { font-size: 12px; padding: 0 2px; }
+.food-open { position: absolute; inset: 0; padding: 0; background: transparent; }
+.food-photo span { pointer-events: none; }
+.photo-delete { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 11px; background: rgba(53,92,125,.78); color: var(--peach); display: grid; place-items: center; backdrop-filter: blur(4px); }
+.photo-delete:hover, .activity-delete:hover { background: var(--coral); color: var(--navy); }
+.is-deleting { opacity: .45; pointer-events: none; }
+.activity-delete { width: 36px; height: 36px; border-radius: 12px; background: rgba(53,92,125,.1); color: var(--navy); display: grid; place-items: center; flex: 0 0 auto; }
+.carousel-delete { margin: 18px auto 0; display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 12px; background: rgba(248,177,149,.14); color: var(--peach); font-size: 12px; font-weight: 700; }
+.carousel-delete:hover { background: var(--coral); color: var(--navy); }

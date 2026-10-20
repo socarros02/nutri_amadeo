@@ -1,11 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type MealType = "Almuerzo" | "Cena";
+export const MEAL_TYPES = ["Desayuno", "Almuerzo", "Merienda", "Cena", "Extra"] as const;
+export type MealType = (typeof MEAL_TYPES)[number];
 
 export type Meal = {
   id: string;
   date: string;
   type: MealType;
+  note: string | null;
   image: string;
   alt: string;
 };
@@ -38,17 +40,19 @@ export async function fetchMeals(): Promise<Meal[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("meals")
-    .select("id, date, type, photo_path, created_at")
+    .select("id, date, type, note, photo_path, created_at")
     .order("date", { ascending: true })
-    .order("type", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((row) => ({
+  const rank = (type: string) => MEAL_TYPES.indexOf(type as MealType);
+  const rows = [...(data ?? [])].sort((a, b) => a.date.localeCompare(b.date) || rank(a.type) - rank(b.type));
+  return rows.map((row) => ({
     id: row.id,
     date: row.date,
     type: row.type,
+    note: row.note ?? null,
     image: photoUrl(row.photo_path),
-    alt: `${row.type} del ${row.date}`,
+    alt: `${row.note || row.type} del ${row.date}`,
   }));
 }
 
@@ -82,12 +86,20 @@ export async function login(credentials: Credentials) {
   await callApi({ action: "login", ...credentials });
 }
 
-export async function saveMeal(credentials: Credentials, meal: { date: string; type: MealType; image: string }) {
+export async function saveMeal(credentials: Credentials, meal: { date: string; type: MealType; note?: string; image: string }) {
   await callApi({ action: "meal", ...credentials, ...meal });
 }
 
 export async function saveActivity(credentials: Credentials, activity: { date: string; name: string; duration: number }) {
   await callApi({ action: "activity", ...credentials, ...activity });
+}
+
+export async function deleteMeal(credentials: Credentials, id: string) {
+  await callApi({ action: "delete-meal", ...credentials, id });
+}
+
+export async function deleteActivity(credentials: Credentials, id: string) {
+  await callApi({ action: "delete-activity", ...credentials, id });
 }
 
 /** Reduce la foto del celular (a menudo 5–10 MB) a un JPEG liviano antes de subirla. */

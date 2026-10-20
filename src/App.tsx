@@ -3,7 +3,10 @@ import {
   Activity,
   Credentials,
   Meal,
+  MEAL_TYPES,
   MealType,
+  deleteActivity,
+  deleteMeal,
   compressImage,
   fetchActivities,
   fetchMeals,
@@ -58,7 +61,7 @@ function Icon({
   name,
   size = 24,
 }: {
-  name: "arrow" | "plate" | "shoe" | "plus" | "camera" | "calendar" | "clock" | "user" | "lock" | "chevron";
+  name: "arrow" | "trash" | "plate" | "shoe" | "plus" | "camera" | "calendar" | "clock" | "user" | "lock" | "chevron";
   size?: number;
 }) {
   const common = {
@@ -83,6 +86,7 @@ function Icon({
     user: <><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" /></>,
     lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2.5" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
+    trash: <><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" /></>,
   };
   return <svg {...common}>{paths[name]}</svg>;
 }
@@ -191,15 +195,29 @@ function Home({ navigate }: { navigate: (screen: Screen) => void }) {
 function FoodScreen({
   meals,
   navigate,
+  onDelete,
 }: {
   meals: Meal[];
   navigate: (screen: Screen) => void;
+  onDelete?: (meal: Meal) => Promise<boolean>;
 }) {
   const [selected, setSelected] = useState(dateKey(new Date()));
   const [carousel, setCarousel] = useState<number | null>(null);
   const [touchStart, setTouchStart] = useState(0);
   const selectedMeals = meals.filter((meal) => meal.date === selected);
   const marked = [...new Set(meals.map((meal) => meal.date))];
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function remove(meal: Meal) {
+    if (!onDelete) return;
+    setDeleting(meal.id);
+    const removed = await onDelete(meal);
+    setDeleting(null);
+    if (removed && carousel !== null) {
+      const remaining = selectedMeals.length - 1;
+      setCarousel(remaining ? Math.min(carousel, remaining - 1) : null);
+    }
+  }
 
   function swipe(event: TouchEvent) {
     if (carousel === null || selectedMeals.length < 2) return;
@@ -230,11 +248,16 @@ function FoodScreen({
         </div>
         <div className="carousel-caption">
           <div className="carousel-date">{label.charAt(0).toUpperCase() + label.slice(1)}</div>
-          <div className="meal-type">{meal.type}</div>
+          <div className="meal-type">{mealLabel(meal)}</div>
           <div className="dots" aria-label={`Foto ${carousel + 1} de ${selectedMeals.length}`}>
             {selectedMeals.map((item, index) => <i className={index === carousel ? "active" : ""} key={item.id} />)}
           </div>
           <small>Deslizá para ver más</small>
+          {onDelete && (
+            <button className="carousel-delete" onClick={() => remove(meal)} disabled={deleting === meal.id}>
+              <Icon name="trash" size={16} /> {deleting === meal.id ? "Borrando…" : "Borrar esta foto"}
+            </button>
+          )}
         </div>
       </main>
     );
@@ -254,10 +277,17 @@ function FoodScreen({
             <>
               <div className="photo-grid">
                 {selectedMeals.map((meal, index) => (
-                  <button className="food-photo" key={meal.id} onClick={() => setCarousel(index)}>
-                    <img src={meal.image} alt={meal.alt} />
-                    <span>{meal.type}</span>
-                  </button>
+                  <div className={`food-photo ${deleting === meal.id ? "is-deleting" : ""}`} key={meal.id}>
+                    <button className="food-open" onClick={() => setCarousel(index)} aria-label={`Ver ${meal.type} en grande`}>
+                      <img src={meal.image} alt={meal.alt} />
+                    </button>
+                    <span>{mealLabel(meal)}</span>
+                    {onDelete && (
+                      <button className="photo-delete" onClick={() => remove(meal)} disabled={deleting === meal.id} aria-label={`Borrar foto de ${meal.type}`}>
+                        <Icon name="trash" size={17} />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
               <button className="outline-button" onClick={() => setCarousel(0)}>Ver en carrusel <Icon name="chevron" size={18} /></button>
@@ -272,11 +302,20 @@ function FoodScreen({
 function ActivityScreen({
   activities,
   navigate,
+  onDelete,
 }: {
   activities: Activity[];
   navigate: (screen: Screen) => void;
+  onDelete?: (activity: Activity) => Promise<boolean>;
 }) {
   const [selected, setSelected] = useState(dateKey(new Date()));
+  const [deleting, setDeleting] = useState<string | null>(null);
+  async function remove(activity: Activity) {
+    if (!onDelete) return;
+    setDeleting(activity.id);
+    await onDelete(activity);
+    setDeleting(null);
+  }
   const dayActivities = activities.filter((item) => item.date === selected);
   return (
     <main className="screen content-screen">
@@ -288,10 +327,14 @@ function ActivityScreen({
           {dayActivities.length ? (
             <div className="activity-list">
               {dayActivities.map((activity) => (
-                <div className="activity-card" key={activity.id}>
+                <div className={`activity-card ${deleting === activity.id ? "is-deleting" : ""}`} key={activity.id}>
                   <span className="activity-icon"><Icon name="shoe" size={30} /></span>
                   <div className="activity-copy"><small>ACTIVIDAD</small><strong>{activity.name}</strong><span><Icon name="clock" size={16} /> {activity.duration} min</span></div>
-                  <div className="activity-check">✓</div>
+                  {onDelete ? (
+                    <button className="activity-delete" onClick={() => remove(activity)} disabled={deleting === activity.id} aria-label={`Borrar ${activity.name}`}>
+                      <Icon name="trash" size={18} />
+                    </button>
+                  ) : <div className="activity-check">✓</div>}
                 </div>
               ))}
             </div>
@@ -358,6 +401,19 @@ function SuccessOverlay({ message }: { message: string }) {
   return <div className="success-overlay"><div className="success-card"><span>✓</span><strong>¡Listo!</strong><p>{message}</p></div></div>;
 }
 
+function mealLabel(meal: Meal) {
+  return meal.type === "Extra" && meal.note ? `Extra · ${meal.note}` : meal.type;
+}
+
+/** Sugiere el momento del día según la hora actual. */
+function defaultMealType(): MealType {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Desayuno";
+  if (hour < 16) return "Almuerzo";
+  if (hour < 20) return "Merienda";
+  return "Cena";
+}
+
 function AddFood({
   navigate,
   credentials,
@@ -368,7 +424,8 @@ function AddFood({
   onSaved: () => Promise<void>;
 }) {
   const [date, setDate] = useState(dateKey(new Date()));
-  const [type, setType] = useState<MealType>("Almuerzo");
+  const [type, setType] = useState<MealType>(defaultMealType());
+  const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
@@ -387,7 +444,7 @@ function AddFood({
     setError("");
     try {
       const image = await compressImage(file);
-      await saveMeal(credentials, { date, type, image });
+      await saveMeal(credentials, { date, type, image, note: type === "Extra" ? note.trim() : undefined });
       await onSaved();
       setSuccess(true);
       window.setTimeout(() => navigate("home"), 1200);
@@ -402,7 +459,8 @@ function AddFood({
       <form className="data-form scroll-content" onSubmit={submit}>
         <div className="form-intro"><span className="section-kicker">NUEVA COMIDA</span><h1>¿Qué comiste hoy?</h1></div>
         <label className="field"><span>Fecha</span><div className="input-wrap"><Icon name="calendar" size={19} /><input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div></label>
-        <fieldset><legend>Momento del día</legend><div className="toggle"><button type="button" className={type === "Almuerzo" ? "active" : ""} onClick={() => setType("Almuerzo")}>Almuerzo</button><button type="button" className={type === "Cena" ? "active" : ""} onClick={() => setType("Cena")}>Cena</button></div></fieldset>
+        <fieldset><legend>Momento del día</legend><div className="toggle five">{MEAL_TYPES.map((option) => <button type="button" key={option} className={type === option ? "active" : ""} onClick={() => setType(option)}>{option}</button>)}</div></fieldset>
+        {type === "Extra" && <label className="field"><span>¿Qué fue? (opcional)</span><div className="input-wrap"><Icon name="plate" size={19} /><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. Postre, snack, fruta" maxLength={60} /></div></label>}
         <label className={`upload-area ${preview ? "has-image" : ""}`}>
           {preview ? <img src={preview} alt="Vista previa de la comida" /> : <><span><Icon name="camera" size={31} /></span><strong>Subí o tomá una foto</strong><small>JPG o PNG</small></>}
           <input type="file" accept="image/*" onChange={(e) => {
@@ -511,6 +569,30 @@ export default function App() {
     refresh();
   }, [refresh]);
 
+  async function removeMeal(meal: Meal) {
+    if (!credentials || !window.confirm(`¿Borrar la foto de ${mealLabel(meal).toLowerCase()}? No se puede deshacer.`)) return false;
+    try {
+      await deleteMeal(credentials, meal.id);
+      setMeals((current) => current.filter((item) => item.id !== meal.id));
+      return true;
+    } catch (err) {
+      window.alert((err as Error).message);
+      return false;
+    }
+  }
+
+  async function removeActivity(activity: Activity) {
+    if (!credentials || !window.confirm(`¿Borrar "${activity.name}" (${activity.duration} min)? No se puede deshacer.`)) return false;
+    try {
+      await deleteActivity(credentials, activity.id);
+      setActivities((current) => current.filter((item) => item.id !== activity.id));
+      return true;
+    } catch (err) {
+      window.alert((err as Error).message);
+      return false;
+    }
+  }
+
   function navigate(next: Screen) {
     const backDestinations: Screen[] = ["home", "load"];
     setDirection(backDestinations.includes(next) ? "back" : "forward");
@@ -522,8 +604,8 @@ export default function App() {
 
   let view: ReactNode;
   if (screen === "home") view = <Home navigate={navigate} />;
-  else if (screen === "food") view = <FoodScreen meals={meals} navigate={navigate} />;
-  else if (screen === "activity") view = <ActivityScreen activities={activities} navigate={navigate} />;
+  else if (screen === "food") view = <FoodScreen meals={meals} navigate={navigate} onDelete={credentials ? removeMeal : undefined} />;
+  else if (screen === "activity") view = <ActivityScreen activities={activities} navigate={navigate} onDelete={credentials ? removeActivity : undefined} />;
   else if (screen === "login" || !credentials) view = <Login navigate={navigate} onSuccess={(c) => { setCredentials(c); writeSession(c); setDirection("forward"); setScreen("load"); }} />;
   else if (screen === "load") view = <LoadMenu navigate={navigate} />;
   else if (screen === "add-food") view = <AddFood navigate={navigate} credentials={credentials} onSaved={refresh} />;

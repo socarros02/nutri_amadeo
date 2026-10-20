@@ -4,7 +4,8 @@
 create table if not exists public.meals (
   id          uuid primary key default gen_random_uuid(),
   date        date not null,
-  type        text not null check (type in ('Almuerzo', 'Cena')),
+  type        text not null check (type in ('Desayuno', 'Almuerzo', 'Merienda', 'Cena', 'Extra')),
+  note        text,  -- opcional, ej. "Postre" para Extra
   photo_path  text not null,
   created_at  timestamptz not null default now()
 );
