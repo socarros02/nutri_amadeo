@@ -62,6 +62,7 @@ export async function POST(request: Request) {
 
     if (body.action === "meal") {
       const { date, type, image } = body;
+      const description = typeof body.description === "string" ? body.description.trim().slice(0, 200) : "";
       const note = type === "Extra" && typeof body.note === "string" ? body.note.trim().slice(0, 60) : "";
       if (!isValidDate(date)) return json({ error: "Fecha inválida" }, 400);
       if (typeof type !== "string" || !MEAL_TYPES.includes(type)) return json({ error: "Tipo inválido" }, 400);
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
 
       const insert = await supabase
         .from("meals")
-        .insert({ date, type, note: note || null, photo_path: path })
+        .insert({ date, type, note: note || null, description: description || null, photo_path: path })
         .select()
         .single();
       if (insert.error) {

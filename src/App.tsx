@@ -1,4 +1,4 @@
-import React, { FormEvent, ReactNode, TouchEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, ReactNode, TouchEvent, useCallback, useEffect, useState } from "react";
 import {
   Activity,
   Credentials,
@@ -15,6 +15,7 @@ import {
   saveActivity,
   saveMeal,
 } from "./lib/api";
+import { generateReport, summarize } from "./lib/report";
 
 type Screen =
   | "home"
@@ -23,15 +24,8 @@ type Screen =
   | "login"
   | "load"
   | "add-food"
-  | "add-activity";
-
-const COLORS = {
-  peach: "#F8B195",
-  coral: "#F67280",
-  mauve: "#C06C84",
-  violet: "#6C5B7B",
-  navy: "#355C7D",
-};
+  | "add-activity"
+  | "report";
 
 const MONTHS = [
   "enero",
@@ -61,7 +55,7 @@ function Icon({
   name,
   size = 24,
 }: {
-  name: "arrow" | "trash" | "plate" | "shoe" | "plus" | "camera" | "calendar" | "clock" | "user" | "lock" | "chevron";
+  name: "arrow" | "trash" | "doc" | "plate" | "shoe" | "plus" | "camera" | "calendar" | "clock" | "user" | "lock" | "chevron";
   size?: number;
 }) {
   const common = {
@@ -86,6 +80,7 @@ function Icon({
     user: <><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" /></>,
     lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2.5" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
+    doc: <><path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5v4h4M9 12.5h6M9 16h6" /></>,
     trash: <><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" /></>,
   };
   return <svg {...common}>{paths[name]}</svg>;
@@ -186,6 +181,9 @@ function Home({ navigate }: { navigate: (screen: Screen) => void }) {
         <button className="primary-button load-button" onClick={() => navigate("login")}>
           <Icon name="plus" size={20} /> Cargar datos
         </button>
+        <button className="outline-button report-button" onClick={() => navigate("report")}>
+          <Icon name="doc" size={19} /> Generar informe PDF
+        </button>
       </div>
       <p className="home-note">Pequeños hábitos, grandes cambios.</p>
     </main>
@@ -249,6 +247,7 @@ function FoodScreen({
         <div className="carousel-caption">
           <div className="carousel-date">{label.charAt(0).toUpperCase() + label.slice(1)}</div>
           <div className="meal-type">{mealLabel(meal)}</div>
+          {meal.description && <p className="carousel-desc">{meal.description}</p>}
           <div className="dots" aria-label={`Foto ${carousel + 1} de ${selectedMeals.length}`}>
             {selectedMeals.map((item, index) => <i className={index === carousel ? "active" : ""} key={item.id} />)}
           </div>
@@ -277,7 +276,8 @@ function FoodScreen({
             <>
               <div className="photo-grid">
                 {selectedMeals.map((meal, index) => (
-                  <div className={`food-photo ${deleting === meal.id ? "is-deleting" : ""}`} key={meal.id}>
+                  <div className="food-item" key={meal.id}>
+                  <div className={`food-photo ${deleting === meal.id ? "is-deleting" : ""}`}>
                     <button className="food-open" onClick={() => setCarousel(index)} aria-label={`Ver ${meal.type} en grande`}>
                       <img src={meal.image} alt={meal.alt} />
                     </button>
@@ -287,6 +287,8 @@ function FoodScreen({
                         <Icon name="trash" size={17} />
                       </button>
                     )}
+                  </div>
+                  {meal.description && <p className="food-desc">{meal.description}</p>}
                   </div>
                 ))}
               </div>
@@ -397,6 +399,61 @@ function LoadMenu({ navigate }: { navigate: (screen: Screen) => void }) {
   );
 }
 
+function ReportScreen({ meals, activities, navigate }: { meals: Meal[]; activities: Activity[]; navigate: (screen: Screen) => void }) {
+  const [endKey, setEndKey] = useState(dateKey(new Date()));
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState("");
+  const info = summarize(meals, activities, endKey);
+  const fmt = (key: string) => new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "long" }).format(new Date(`${key}T12:00:00`));
+
+  async function generate() {
+    setBusy(true);
+    setError("");
+    setProgress("Preparando…");
+    try {
+      await generateReport({
+        meals,
+        activities,
+        endKey,
+        onProgress: (done, total) => setProgress(total ? `Agregando fotos ${done} de ${total}…` : "Armando PDF…"),
+      });
+      setProgress("¡Listo! Revisá tus descargas.");
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo generar el PDF. Probá de nuevo.");
+      setProgress("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="screen content-screen">
+      <Header title="Informe PDF" onBack={() => navigate("home")} />
+      <div className="data-form scroll-content">
+        <div className="form-intro"><span className="section-kicker">ÚLTIMOS 21 DÍAS</span><h1>Tu registro en un PDF</h1></div>
+        <label className="field"><span>Hasta el día</span><div className="input-wrap"><Icon name="calendar" size={19} /><input type="date" value={endKey} onChange={(e) => e.target.value && setEndKey(e.target.value)} required /></div></label>
+        <div className="report-summary">
+          <p>Del <strong>{fmt(info.range[0])}</strong> al <strong>{fmt(endKey)}</strong></p>
+          <div className="report-stats">
+            <div><strong>{info.meals.length}</strong><small>fotos</small></div>
+            <div><strong>{info.daysWithMeals}/21</strong><small>días con fotos</small></div>
+            <div><strong>{info.activities.length}</strong><small>actividades</small></div>
+          </div>
+        </div>
+        <div className="form-tip"><Icon name="doc" size={21} /><span><strong>Portada + una página por día</strong><small>Las fotos se ordenan por desayuno, almuerzo, merienda, cena y extra.</small></span></div>
+        {error && <div className="error-message" role="alert">{error}</div>}
+        <button className="primary-button form-submit" onClick={generate} disabled={busy || (!info.meals.length && !info.activities.length)}>
+          <Icon name="doc" size={19} /> {busy ? "Generando…" : "Descargar PDF"}
+        </button>
+        {progress && <p className="report-progress" role="status">{progress}</p>}
+        {!info.meals.length && !info.activities.length && <p className="report-progress">No hay registros en este período.</p>}
+      </div>
+    </main>
+  );
+}
+
 function SuccessOverlay({ message }: { message: string }) {
   return <div className="success-overlay"><div className="success-card"><span>✓</span><strong>¡Listo!</strong><p>{message}</p></div></div>;
 }
@@ -426,6 +483,7 @@ function AddFood({
   const [date, setDate] = useState(dateKey(new Date()));
   const [type, setType] = useState<MealType>(defaultMealType());
   const [note, setNote] = useState("");
+  const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
@@ -444,7 +502,7 @@ function AddFood({
     setError("");
     try {
       const image = await compressImage(file);
-      await saveMeal(credentials, { date, type, image, note: type === "Extra" ? note.trim() : undefined });
+      await saveMeal(credentials, { date, type, image, note: type === "Extra" ? note.trim() : undefined, description: description.trim() || undefined });
       await onSaved();
       setSuccess(true);
       window.setTimeout(() => navigate("home"), 1200);
@@ -461,6 +519,7 @@ function AddFood({
         <label className="field"><span>Fecha</span><div className="input-wrap"><Icon name="calendar" size={19} /><input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div></label>
         <fieldset><legend>Momento del día</legend><div className="toggle five">{MEAL_TYPES.map((option) => <button type="button" key={option} className={type === option ? "active" : ""} onClick={() => setType(option)}>{option}</button>)}</div></fieldset>
         {type === "Extra" && <label className="field"><span>¿Qué fue? (opcional)</span><div className="input-wrap"><Icon name="plate" size={19} /><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. Postre, snack, fruta" maxLength={60} /></div></label>}
+        <label className="field"><span>¿Qué comiste? (opcional)</span><textarea className="text-area" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej. Pollo a la plancha + ensalada + 1/4 plato de arroz integral" maxLength={200} rows={3} /></label>
         <label className={`upload-area ${preview ? "has-image" : ""}`}>
           {preview ? <img src={preview} alt="Vista previa de la comida" /> : <><span><Icon name="camera" size={31} /></span><strong>Subí o tomá una foto</strong><small>JPG o PNG</small></>}
           <input type="file" accept="image/*" onChange={(e) => {
@@ -606,13 +665,14 @@ export default function App() {
   if (screen === "home") view = <Home navigate={navigate} />;
   else if (screen === "food") view = <FoodScreen meals={meals} navigate={navigate} onDelete={credentials ? removeMeal : undefined} />;
   else if (screen === "activity") view = <ActivityScreen activities={activities} navigate={navigate} onDelete={credentials ? removeActivity : undefined} />;
+  else if (screen === "report") view = <ReportScreen meals={meals} activities={activities} navigate={navigate} />;
   else if (screen === "login" || !credentials) view = <Login navigate={navigate} onSuccess={(c) => { setCredentials(c); writeSession(c); setDirection("forward"); setScreen("load"); }} />;
   else if (screen === "load") view = <LoadMenu navigate={navigate} />;
   else if (screen === "add-food") view = <AddFood navigate={navigate} credentials={credentials} onSaved={refresh} />;
   else view = <AddActivity navigate={navigate} credentials={credentials} onSaved={refresh} />;
 
   return (
-    <div className="app-shell" style={{ "--peach": COLORS.peach, "--coral": COLORS.coral, "--mauve": COLORS.mauve, "--violet": COLORS.violet, "--navy": COLORS.navy } as React.CSSProperties}>
+    <div className="app-shell">
       <div className={`phone-frame ${direction}`} key={screen}>
         {!isConfigured && <div className="config-banner">Falta configurar Supabase (VITE_SUPABASE_URL y VITE_SUPABASE_KEY).</div>}
         {loadError && <div className="config-banner" role="alert">{loadError} <button onClick={refresh}>Reintentar</button></div>}

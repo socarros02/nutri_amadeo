@@ -8,6 +8,7 @@ export type Meal = {
   date: string;
   type: MealType;
   note: string | null;
+  description: string | null;
   image: string;
   alt: string;
 };
@@ -40,7 +41,7 @@ export async function fetchMeals(): Promise<Meal[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("meals")
-    .select("id, date, type, note, photo_path, created_at")
+    .select("id, date, type, note, description, photo_path, created_at")
     .order("date", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -51,6 +52,7 @@ export async function fetchMeals(): Promise<Meal[]> {
     date: row.date,
     type: row.type,
     note: row.note ?? null,
+    description: row.description ?? null,
     image: photoUrl(row.photo_path),
     alt: `${row.note || row.type} del ${row.date}`,
   }));
@@ -86,7 +88,7 @@ export async function login(credentials: Credentials) {
   await callApi({ action: "login", ...credentials });
 }
 
-export async function saveMeal(credentials: Credentials, meal: { date: string; type: MealType; note?: string; image: string }) {
+export async function saveMeal(credentials: Credentials, meal: { date: string; type: MealType; note?: string; description?: string; image: string }) {
   await callApi({ action: "meal", ...credentials, ...meal });
 }
 
